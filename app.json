@@ -1,0 +1,27 @@
+{
+  "name": "Professional Bypass Bot",
+  "description": "A professional Telegram bot for bypassing 20+ file hosting services",
+  "repository": "https://github.com/RecklessEvadingDriver/bypass-bot",
+  "keywords": ["telegram", "bot", "bypass", "file-hosting"],
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Your Telegram Bot Token from @BotFather",
+      "required": true
+    },
+    "ADMIN_ID": {
+      "description": "Your Telegram User ID (get from @userinfobot)",
+      "required": true
+    }
+  },
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
