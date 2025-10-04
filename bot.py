@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # bot.py -- Professional Unified Bypass Bot (async, python-telegram-bot v20+)
 # Comprehensive bypass support for 20+ services
-# Sends neat inline Markdown messages with professional formatting
+# Optimized for Heroku deployment
+# Version: 2.0 | Last Updated: 2025-01-04
 
 import os
 import json
@@ -20,10 +21,15 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from telegram.error import BadRequest
 
 # ---------------- CONFIG ----------------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8448879195:AAEmAHX2Cyz6r7GDSnSXsJ9-MpMzxT2lK54")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8127197499"))
-REQUIRED_CHANNEL = "@+D0ohqup8BxE2NWRl"  # Channel users must join
-CHANNEL_LINK = "https://t.me/+D0ohqup8BxE2NWRl"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@yourusername")
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/+D0ohqup8BxE2NWRl")
+
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN environment variable not set!")
+if ADMIN_ID == 0:
+    raise ValueError("❌ ADMIN_ID environment variable not set!")
 
 STORE_FILE = "store.json"
 DEFAULT_DOMAINS = {
@@ -48,6 +54,11 @@ DEFAULT_DOMAINS = {
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
 
+print(f"🤖 Bot Starting...")
+print(f"👤 Admin ID: {ADMIN_ID}")
+print(f"📢 Required Channel: {REQUIRED_CHANNEL}")
+print(f"🕐 UTC Time: 2025-01-04 14:43:54")
+
 # ---------------- Persistence ----------------
 def load_store():
     if not os.path.exists(STORE_FILE):
@@ -58,7 +69,8 @@ def load_store():
     try:
         with open(STORE_FILE, "r") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Error loading store: {e}")
         return {"allowed_users": [], "allowed_chats": [], "domains": {}}
 
 def save_store(store):
@@ -66,7 +78,7 @@ def save_store(store):
         with open(STORE_FILE, "w") as f:
             json.dump(store, f, indent=2)
     except Exception as e:
-        print("Error saving store:", e)
+        print(f"❌ Error saving store: {e}")
 
 STORE = load_store()
 DOMAINS = DEFAULT_DOMAINS.copy()
@@ -83,9 +95,6 @@ async def run_blocking(fn, *args, **kwargs):
 def is_admin(uid: int) -> bool:
     return int(uid) == int(ADMIN_ID)
 
-def user_allowed(uid: int) -> bool:
-    return is_admin(uid) or (int(uid) in STORE.get("allowed_users", []))
-
 async def is_user_in_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Check if user is member of required channel"""
     user_id = update.effective_user.id
@@ -95,26 +104,19 @@ async def is_user_in_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if is_admin(user_id):
         return True
     
-    # Allow specific chat ID (the one from channel link)
+    # Allow specific group chat
     if chat and chat.type in ["group", "supergroup"]:
-        # Auto-allow the specified group
-        chat_username = chat.username
-        if chat_username and "D0ohqup8BxE2NWRl" in str(chat.id):
-            return True
-        
-        # Check if chat is in allowed list
         if chat.id in STORE.get("allowed_chats", []):
             return True
     
-    # For private chats, check channel membership
+    # For private chats, check channel membership (optional - can disable for open access)
+    # Comment out the try-except block below to disable channel verification
     if chat and chat.type == "private":
         try:
             member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
             return member.status in ["member", "administrator", "creator"]
-        except BadRequest:
-            # If channel check fails, allow access (channel might be private/invalid)
-            return True
-        except Exception:
+        except:
+            # If check fails, allow access (for open bot)
             return True
     
     return True
@@ -134,11 +136,12 @@ def build_inline_buttons(links: list):
         return None
     
     buttons = []
-    for idx, item in enumerate(links[:20], 1):
+    for item in links[:20]:
         typ = item.get("type", "Download")
         url = item.get("url", "")
         if not url:
             continue
+        
         emoji = "📥"
         if "direct" in typ.lower() or "instant" in typ.lower():
             emoji = "⚡"
@@ -178,11 +181,6 @@ def build_message(file_name: str, file_size: str, links: list, service: str = ""
     
     return "\n".join(lines)
 
-def get_quality_from_name(filename: str) -> str:
-    """Extract quality from filename"""
-    match = re.search(r'(\d{3,4})[pP]', filename or "")
-    return match.group(1) + "p" if match else "Unknown"
-
 # ---------------- Decoders ----------------
 def rot13(s: str) -> str:
     return ''.join(
@@ -201,24 +199,19 @@ def try_decode_chain(enc: str):
         return None
 
 def base64_decode_safe(s: str) -> str:
-    """Safe base64 decode with error handling"""
     try:
         return base64.b64decode(s).decode('utf-8')
     except Exception:
         return ""
 
 def get_base_url(url: str) -> str:
-    """Extract base URL from full URL"""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
 
-# ---------------- Bypass implementations (blocking) ----------------
-# [All bypass functions remain exactly the same as in previous version]
-# I'll include them for completeness but they're unchanged
+# ---------------- Bypass Implementations ----------------
 
-# 1) HubDrive
 def hubdrive_bypass(url: str):
-    """HubDrive bypass - https://hubdrive.wales"""
+    """HubDrive bypass"""
     try:
         headers = {"Referer": DOMAINS.get("hubdrive"), "User-Agent": USER_AGENT}
         r = requests.get(url, headers=headers, timeout=20)
@@ -245,9 +238,8 @@ def hubdrive_bypass(url: str):
     except Exception as e:
         return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
-# 2) HubCloud
 def hubcloud_bypass(url: str):
-    """HubCloud bypass - https://hubcloud.one"""
+    """HubCloud bypass"""
     try:
         base_url = "https://hubcloud.one"
         new_url = url.replace(get_base_url(url), base_url)
@@ -260,8 +252,7 @@ def hubcloud_bypass(url: str):
         link = ""
         
         if script_tag:
-            script_text = script_tag.string
-            match = re.search(r"var url = '([^']*)'", script_text)
+            match = re.search(r"var url = '([^']*)'", script_tag.string)
             if match:
                 link = match.group(1)
         
@@ -306,9 +297,8 @@ def hubcloud_bypass(url: str):
     except Exception as e:
         return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
-# 3) HubCDN
 def hubcdn_bypass(url: str):
-    """HubCDN bypass - https://hubcdn.fans"""
+    """HubCDN bypass"""
     try:
         headers = {"User-Agent": USER_AGENT}
         r = requests.get(url, headers=headers, timeout=20)
@@ -317,8 +307,7 @@ def hubcdn_bypass(url: str):
         
         script_tag = soup.find('script', string=re.compile(r'var\s+reurl'))
         if script_tag:
-            script_text = script_tag.string
-            reurl_match = re.search(r'reurl\s*=\s*"([^"]+)"', script_text)
+            reurl_match = re.search(r'reurl\s*=\s*"([^"]+)"', script_tag.string)
             if reurl_match:
                 reurl = reurl_match.group(1)
                 if '?r=' in reurl:
@@ -328,29 +317,57 @@ def hubcdn_bypass(url: str):
                         final_url = unquote(decoded_url.split('link=')[-1])
                         return {"file_name": "", "file_size": "", "links": [{"type": "Direct Link", "url": final_url}]}
         
-        text = r.text
-        m = re.search(r"s\('o','([^']+)'\)", text)
-        if m:
-            decoded = try_decode_chain(m.group(1))
-            if decoded and decoded.get("o"):
-                link = base64.b64decode(decoded["o"]).decode()
-                return {"file_name": "", "file_size": "", "links": [{"type": "Direct Link", "url": link}]}
-        
         return {"file_name": "", "file_size": "", "links": []}
     except Exception as e:
         return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
-# [Include all other bypass functions from previous version]
-# For brevity, I'm showing the structure. In production, include all 20+ bypass functions.
-
-# Placeholder for remaining bypass functions (VCloud, GDFlix, PhotoLinx, GoFile, etc.)
-# They remain exactly the same as in the previous version
-
 def vcloud_bypass(url: str):
     """VCloud bypass"""
     try:
-        # Same implementation as before
-        return {"file_name": "", "file_size": "", "links": []}
+        headers = {"User-Agent": USER_AGENT}
+        
+        if "api/index.php" in url:
+            doc = requests.get(url, headers=headers, timeout=20).text
+            soup = BeautifulSoup(doc, 'html.parser')
+            new_link = soup.select_one("div.main h4 a")
+            if new_link:
+                url = new_link.get('href', '')
+        
+        doc = requests.get(url, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        
+        script_tag = soup.find('script', string=re.compile(r'var\s+url'))
+        if not script_tag:
+            return {"file_name": "", "file_size": "", "links": []}
+        
+        url_match = re.search(r"var url = '([^']*)'", script_tag.string)
+        if not url_match:
+            return {"file_name": "", "file_size": "", "links": []}
+        
+        url_value = url_match.group(1)
+        document = requests.get(url_value, headers=headers, timeout=20).text
+        soup2 = BeautifulSoup(document, 'html.parser')
+        
+        header = soup2.select_one("div.card-header")
+        file_name = header.get_text(strip=True) if header else ""
+        size_elem = soup2.select_one("i#size")
+        file_size = size_elem.get_text(strip=True) if size_elem else ""
+        
+        links = []
+        card_body = soup2.select_one("div.card-body")
+        if card_body:
+            for anchor in card_body.select("h2 a.btn"):
+                href = anchor.get('href', '')
+                text = anchor.get_text(strip=True)
+                
+                if "Download [FSL Server]" in text:
+                    links.append({"type": "FSL Server", "url": href})
+                elif "Download [Server : 1]" in text:
+                    links.append({"type": "Direct Download", "url": href})
+                elif "pixeldra" in href:
+                    links.append({"type": "Pixeldrain", "url": href})
+        
+        return {"file_name": file_name, "file_size": file_size, "links": links}
     except Exception as e:
         return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
@@ -358,62 +375,331 @@ class GDFlixBypass:
     def __init__(self):
         self.session = requests.Session()
         self.base = DOMAINS.get("gdflix", DEFAULT_DOMAINS["gdflix"])
+
     def bypass(self, url: str):
-        return {"file_name": "", "file_size": "", "links": []}
+        try:
+            r = self.session.get(url, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            
+            file_name = ""
+            file_size = ""
+            for li in soup.select("ul > li.list-group-item"):
+                txt = li.get_text(separator=" ", strip=True)
+                if "Name" in txt:
+                    file_name = txt.split(":")[-1].strip()
+                if "Size" in txt:
+                    file_size = txt.split(":")[-1].strip()
+            
+            links = []
+            for a in soup.select("div.text-center a"):
+                text = a.get_text(strip=True)
+                href = a.get("href")
+                if not href:
+                    continue
+                if href.startswith("/"):
+                    href = urljoin(self.base, href)
+                
+                if "Instant DL" in text:
+                    try:
+                        r2 = self.session.get(href, allow_redirects=False, timeout=15)
+                        link = r2.headers.get("location", href)
+                        if "url=" in link:
+                            link = link.split("url=")[-1]
+                        links.append({"type": "Instant Download", "url": link})
+                    except:
+                        pass
+                elif "DIRECT DL" in text:
+                    links.append({"type": "Direct Download", "url": href})
+                elif "CLOUD DOWNLOAD" in text:
+                    links.append({"type": "Cloud Download", "url": href})
+                elif "PixelDrain" in text:
+                    links.append({"type": "Pixeldrain", "url": href})
+                elif "GoFile" in text:
+                    links.append({"type": "GoFile", "url": href})
+            
+            seen = set()
+            uniq = []
+            for l in links:
+                u = l.get("url")
+                if not u or u in seen:
+                    continue
+                seen.add(u)
+                uniq.append(l)
+            
+            return {"file_name": file_name, "file_size": file_size, "links": uniq}
+        except Exception as e:
+            return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 class PhotoLinxBypass:
     def __init__(self):
         self.base = DOMAINS.get("photolinx", DEFAULT_DOMAINS["photolinx"])
         self.session = requests.Session()
+
     def bypass(self, url: str):
-        return {"file_name": "", "file_size": "", "links": []}
+        try:
+            r = self.session.get(url, timeout=15)
+            ssid = self.session.cookies.get("PHPSESSID")
+            if not ssid:
+                return {"file_name": "", "file_size": "", "links": [], "error": "no PHPSESSID"}
+            
+            soup = BeautifulSoup(r.text, "html.parser")
+            file_name = soup.select_one("h1").text.strip() if soup.select_one("h1") else ""
+            gen = soup.select_one("#generate_url")
+            if not gen:
+                return {"file_name": file_name, "file_size": "", "links": [], "error": "no generate button"}
+            
+            access_token = gen.get("data-token")
+            uid = gen.get("data-uid")
+            body = {"type": "DOWNLOAD_GENERATE", "payload": {"access_token": access_token, "uid": uid}}
+            headers = {
+                "cookie": f"PHPSESSID={ssid}",
+                "Referer": url,
+                "x-requested-with": "XMLHttpRequest",
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": USER_AGENT
+            }
+            action_url = f"{self.base}/action"
+            r2 = self.session.post(action_url, json=body, headers=headers, timeout=15)
+            if r2.status_code != 200:
+                return {"file_name": file_name, "file_size": "", "links": [], "error": f"failed_{r2.status_code}"}
+            
+            data = r2.json()
+            dw = data.get("download_url")
+            if not dw:
+                return {"file_name": file_name, "file_size": "", "links": [], "error": "no download_url"}
+            
+            return {"file_name": file_name, "file_size": "", "links": [{"type": "Direct Download", "url": dw}]}
+        except Exception as e:
+            return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 class GoFileBypass:
     def bypass(self, url: str):
-        return {"file_name": "", "file_size": "", "links": []}
+        try:
+            file_id = urlparse(url).path.strip("/").split("/")[-1]
+            if "?c=" in url:
+                file_id = parse_qs(urlparse(url).query).get('c', [file_id])[0]
+            
+            r = requests.post("https://api.gofile.io/accounts", data={}, timeout=15)
+            r.raise_for_status()
+            token = r.json().get("data", {}).get("token")
+            
+            global_js = requests.get("https://gofile.io/dist/js/global.js", timeout=15).text
+            wt_match = re.search(r'''appdata\.wt\s*=\s*['"]([^'"]+)['"]''', global_js)
+            wt = wt_match.group(1) if wt_match else "4fd6sg89d7s6"
+            
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            params = {"wt": wt}
+            r2 = requests.get(f"https://api.gofile.io/contents/{file_id}", headers=headers, params=params, timeout=15)
+            r2.raise_for_status()
+            
+            j = r2.json()
+            children = j.get("data", {}).get("children", {})
+            if not children:
+                return {"file_name": "", "file_size": "", "links": [], "error": "no children"}
+            
+            first_key = list(children.keys())[0]
+            child_data = children[first_key]
+            link = child_data.get("link")
+            file_name = child_data.get("name", "")
+            size = child_data.get("size", 0)
+            
+            if size < 1024 * 1024 * 1024:
+                file_size = f"{size / (1024 * 1024):.2f} MB"
+            else:
+                file_size = f"{size / (1024 * 1024 * 1024):.2f} GB"
+            
+            return {"file_name": file_name, "file_size": file_size, "links": [{"type": "Direct Download", "url": link}], "token": token}
+        except Exception as e:
+            return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 class DriveLeechBypass:
     def __init__(self):
         self.user_agent = USER_AGENT
         self.session = requests.Session()
+
     def bypass(self, url: str):
-        return {"file_name": "", "file_size": "", "links": []}
+        try:
+            parsed = urlparse(url)
+            base_domain = f"{parsed.scheme}://{parsed.netloc}"
+            
+            if "driveleech" in base_domain:
+                referer = DOMAINS.get("driveleech")
+            else:
+                referer = DOMAINS.get("driveseed")
+            
+            headers = {"Referer": referer, "User-Agent": self.user_agent}
+            
+            if "r?key=" in url:
+                response = self.session.get(url, headers=headers, timeout=20)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                script_tag = soup.find('script')
+                if script_tag:
+                    replace_match = re.search(r'replace\("([^"]+)"\)', script_tag.string or "")
+                    if replace_match:
+                        url = base_domain + replace_match.group(1)
+            
+            response = self.session.get(url, headers=headers, timeout=20)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            file_name = ""
+            file_size = ""
+            for li in soup.select("ul > li.list-group-item"):
+                text = li.get_text(strip=True)
+                if "Name :" in text:
+                    file_name = text.split("Name :")[-1].strip()
+                if "Size :" in text:
+                    file_size = text.split("Size :")[-1].strip()
+            
+            links = []
+            for anchor in soup.select("div.text-center > a"):
+                text = anchor.get_text(strip=True)
+                href = anchor.get('href', '')
+                
+                if "Instant Download" in text:
+                    try:
+                        parsed_url = urlparse(href)
+                        api_url = f"{parsed_url.scheme}://{parsed_url.netloc}/api"
+                        keys = parse_qs(parsed_url.query).get('url')
+                        
+                        if keys:
+                            data = {'keys': keys}
+                            api_response = self.session.post(api_url, headers=headers, data=data, timeout=20)
+                            result = api_response.json()
+                            video_url = result.get('url')
+                            if video_url:
+                                links.append({"type": "Instant Download", "url": video_url})
+                    except:
+                        pass
+                elif "Cloud Download" in text:
+                    links.append({"type": "Cloud Download", "url": href})
+            
+            return {"file_name": file_name, "file_size": file_size, "links": links}
+        except Exception as e:
+            return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def linkstore_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
-
-def linkstore_drive_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        doc = requests.get(url, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        links = []
+        for anchor in soup.select("a.ep-simple-button"):
+            href = anchor.get('href', '')
+            if href:
+                links.append({"type": "Download", "url": href})
+        return {"file_name": "", "file_size": "", "links": links}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def luxdrive_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        doc = requests.get(url, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        links = []
+        for anchor in soup.select("div > div > a"):
+            href = anchor.get('href', '')
+            if href:
+                if ".mkv" in href or ".mp4" in href:
+                    links.append({"type": "Instant Download", "url": href})
+                else:
+                    links.append({"type": "Download", "url": href})
+        return {"file_name": "", "file_size": "", "links": links}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def vifix_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        response = requests.get(url, headers=headers, allow_redirects=False, timeout=20)
+        location = response.headers.get("location", "")
+        if location:
+            return {"file_name": "", "file_size": "", "links": [{"type": "Redirect Link", "url": location}]}
+        return {"file_name": "", "file_size": "", "links": []}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def howblogs_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        doc = requests.get(url, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        links = []
+        for anchor in soup.select("div.center_it a"):
+            href = anchor.get('href', '')
+            if href:
+                links.append({"type": "Download", "url": href})
+        return {"file_name": "", "file_size": "", "links": links}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def fastdl_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        response = requests.get(url, headers=headers, allow_redirects=False, timeout=20)
+        location = response.headers.get("location", "")
+        if location:
+            return {"file_name": "", "file_size": "", "links": [{"type": "Direct Link", "url": location}]}
+        return {"file_name": "", "file_size": "", "links": []}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def fastlinks_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        session = requests.Session()
+        headers = {"User-Agent": USER_AGENT}
+        res = session.get(url, headers=headers, timeout=20)
+        ssid = session.cookies.get("PHPSESSID", "")
+        form_data = {"_csrf_token_645a83a41868941e4692aa31e7235f2": "3000f5248d9d207e4941e0aa053e1bcfd04dcbab"}
+        cookies = {"PHPSESSID": ssid}
+        doc = session.post(url, data=form_data, cookies=cookies, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        links = []
+        for anchor in soup.select("div.well > a"):
+            href = anchor.get('href', '')
+            if href:
+                links.append({"type": "Download", "url": href})
+        return {"file_name": "", "file_size": "", "links": links}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
 def wlinkfast_bypass(url: str):
-    return {"file_name": "", "file_size": "", "links": []}
+    try:
+        headers = {"User-Agent": USER_AGENT}
+        doc = requests.get(url, headers=headers, timeout=20).text
+        soup = BeautifulSoup(doc, 'html.parser')
+        h1_link = soup.select_one("h1 > a")
+        if not h1_link:
+            return {"file_name": "", "file_size": "", "links": []}
+        link = h1_link.get('href', '')
+        if not link:
+            return {"file_name": "", "file_size": "", "links": []}
+        doc2 = requests.get(link, headers=headers, timeout=20).text
+        soup2 = BeautifulSoup(doc2, 'html.parser')
+        download_btn = soup2.select_one("a#downloadButton")
+        download_link = ""
+        if download_btn:
+            download_link = download_btn.get('href', '')
+        if not download_link:
+            script_match = re.search(r'''window\.location\.href\s*=\s*['"]([^'"]+)['"]''', doc2)
+            if script_match:
+                download_link = script_match.group(1)
+        if download_link:
+            return {"file_name": "", "file_size": "", "links": [{"type": "Download", "url": download_link}]}
+        return {"file_name": "", "file_size": "", "links": []}
+    except Exception as e:
+        return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
 
-# ---------------- Telegram handlers (async) ----------------
+# ---------------- Telegram Handlers ----------------
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # Check if user has access
     has_access = await is_user_in_channel(update, context)
     
     if not has_access:
-        # Show join channel message
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
             [InlineKeyboardButton("✅ Verify Membership", callback_data="verify_membership")]
@@ -446,7 +732,6 @@ _This is a one\\-time verification\\._
         )
         return
     
-    # User has access - show main menu
     welcome_text = f"""
 *🤖 Professional Bypass Bot*
 
@@ -483,13 +768,10 @@ _Last Updated: 2025\\-01\\-04_
     await update.message.reply_text(welcome_text, parse_mode="MarkdownV2")
 
 async def verify_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle verify membership button click"""
     query = update.callback_query
     await query.answer()
     
     user = query.from_user
-    
-    # Create a fake update object for channel check
     fake_update = Update(update.update_id, message=query.message)
     fake_update._effective_user = user
     fake_update._effective_chat = query.message.chat
@@ -533,22 +815,11 @@ _Make sure you've actually joined before verifying\\!_
             [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
             [InlineKeyboardButton("🔄 Try Again", callback_data="verify_membership")]
         ])
-        await query.edit_message_text(
-            error_text,
-            parse_mode="MarkdownV2",
-            reply_markup=keyboard
-        )
+        await query.edit_message_text(error_text, parse_mode="MarkdownV2", reply_markup=keyboard)
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help message with all commands"""
-    user = update.effective_user
-    
-    # Check access
     if not await is_user_in_channel(update, context):
-        await update.message.reply_text(
-            f"❌ Please join our channel first: {CHANNEL_LINK}\nThen use /start to verify\\.",
-            disable_web_page_preview=True
-        )
+        await update.message.reply_text(f"❌ Please join our channel first: {CHANNEL_LINK}", disable_web_page_preview=True)
         return
     
     help_text = """
@@ -559,21 +830,14 @@ Simply send any supported link and I'll extract it automatically\\!
 
 *⚡ Bypass Commands:*
 • `/bypass <url>` \\- Auto\\-detect service
-• `/hubdrive <url>` \\- Bypass HubDrive
-• `/hubcloud <url>` \\- Bypass HubCloud
-• `/hubcdn <url>` \\- Bypass HubCDN
-• `/vcloud <url>` \\- Bypass VCloud
-• `/gdflix <url>` \\- Bypass GDFlix
-• `/photolinx <url>` \\- Bypass PhotoLinx
-• `/gofile <url>` \\- Bypass GoFile
-• `/driveleech <url>` \\- Bypass DriveLeech
-• `/driveseed <url>` \\- Bypass DriveSeed
-• `/linkstore <url>` \\- Bypass Linkstore
-• `/luxdrive <url>` \\- Bypass Luxdrive
-• `/vifix <url>` \\- Bypass Vifix
-• `/fastdl <url>` \\- Bypass FastDL
-• `/fastlinks <url>` \\- Bypass FastLinks
-• `/wlinkfast <url>` \\- Bypass WLinkFast
+• `/hubdrive <url>` • `/hubcloud <url>`
+• `/hubcdn <url>` • `/vcloud <url>`
+• `/gdflix <url>` • `/photolinx <url>`
+• `/gofile <url>` • `/driveleech <url>`
+• `/driveseed <url>` • `/linkstore <url>`
+• `/luxdrive <url>` • `/vifix <url>`
+• `/fastdl <url>` • `/fastlinks <url>`
+• `/wlinkfast <url>`
 
 *ℹ️ Information:*
 • `/start` \\- Start the bot
@@ -592,12 +856,8 @@ _Need more help\\? Contact admin\\!_
     await update.message.reply_text(help_text, parse_mode="MarkdownV2")
 
 async def services_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show list of supported services"""
     if not await is_user_in_channel(update, context):
-        await update.message.reply_text(
-            f"❌ Please join our channel first: {CHANNEL_LINK}",
-            disable_web_page_preview=True
-        )
+        await update.message.reply_text(f"❌ Please join our channel first: {CHANNEL_LINK}", disable_web_page_preview=True)
         return
     
     services_text = """
@@ -630,8 +890,7 @@ _More services added regularly\\!_
     await update.message.reply_text(services_text, parse_mode="MarkdownV2")
 
 async def about_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show about information"""
-    about_text = """
+    about_text = f"""
 *ℹ️ About This Bot*
 
 *🤖 Professional Bypass Bot*
@@ -645,10 +904,10 @@ _Last Updated:_ 2025\\-01\\-04
 • Professional UI
 
 *👨‍💻 Developer:*
-@RecklessEvadingDriver
+@{escape_markdown("RecklessEvadingDriver")}
 
 *🔗 Channel:*
-[Join Our Channel]({})
+[Join Our Channel]({escape_markdown(CHANNEL_LINK)})
 
 *⚙️ Technology:*
 • Python 3\\.11\\+
@@ -661,15 +920,10 @@ For educational purposes only\\.
 Use responsibly\\.
 
 _Thank you for using our service\\!_ ❤️
-""".format(escape_markdown(CHANNEL_LINK))
-    
-    await update.message.reply_text(
-        about_text,
-        parse_mode="MarkdownV2",
-        disable_web_page_preview=True
-    )
+"""
+    await update.message.reply_text(about_text, parse_mode="MarkdownV2", disable_web_page_preview=True)
 
-# Admin command handlers (hidden from regular users)
+# Admin handlers (silent - no response if not admin)
 async def setdomain_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -682,102 +936,16 @@ async def setdomain_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(STORE)
     await update.message.reply_text(f"✅ Set `{escape_markdown(svc)}` to `{escape_markdown(new)}`", parse_mode="MarkdownV2")
 
-async def getdomains_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    lines = ["*🌐 Domains*\n"] + [f"• `{escape_markdown(k)}`: `{escape_markdown(v)}`" for k, v in DOMAINS.items()]
-    await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-
-async def grant_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    if not context.args:
-        await update.message.reply_text("*Usage:* `/grant <user_id>`", parse_mode="MarkdownV2")
-        return
-    try:
-        tgt = int(context.args[0])
-        STORE.setdefault("allowed_users", [])
-        if tgt in STORE["allowed_users"]:
-            await update.message.reply_text(f"ℹ️ User `{tgt}` already allowed", parse_mode="MarkdownV2")
-            return
-        STORE["allowed_users"].append(tgt)
-        save_store(STORE)
-        await update.message.reply_text(f"✅ Granted `{tgt}`", parse_mode="MarkdownV2")
-    except:
-        await update.message.reply_text("❌ Invalid ID")
-
-async def revoke_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    if not context.args:
-        await update.message.reply_text("*Usage:* `/revoke <user_id>`", parse_mode="MarkdownV2")
-        return
-    try:
-        tgt = int(context.args[0])
-        if "allowed_users" in STORE and tgt in STORE["allowed_users"]:
-            STORE["allowed_users"].remove(tgt)
-            save_store(STORE)
-            await update.message.reply_text(f"✅ Revoked `{tgt}`", parse_mode="MarkdownV2")
-        else:
-            await update.message.reply_text(f"ℹ️ User `{tgt}` not found", parse_mode="MarkdownV2")
-    except:
-        await update.message.reply_text("❌ Invalid ID")
-
-async def allowchat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    chat = update.effective_chat
-    if chat.type == "private":
-        await update.message.reply_text("ℹ️ Use in a group")
-        return
-    STORE.setdefault("allowed_chats", [])
-    if chat.id in STORE["allowed_chats"]:
-        await update.message.reply_text("ℹ️ Already allowed")
-        return
-    STORE["allowed_chats"].append(chat.id)
-    save_store(STORE)
-    await update.message.reply_text(f"✅ Allowed chat `{chat.id}`", parse_mode="MarkdownV2")
-
-async def denychat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    chat = update.effective_chat
-    if chat.type == "private":
-        await update.message.reply_text("ℹ️ Use in a group")
-        return
-    if "allowed_chats" in STORE and chat.id in STORE["allowed_chats"]:
-        STORE["allowed_chats"].remove(chat.id)
-        save_store(STORE)
-        await update.message.reply_text("✅ Denied chat")
-    else:
-        await update.message.reply_text("ℹ️ Chat not in list")
-
-async def listallowed_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    users = STORE.get("allowed_users", [])
-    chats = STORE.get("allowed_chats", [])
-    lines = [f"*📊 Access List*\n\n*Users:* `{len(users)}`"]
-    lines += [f"• `{u}`" for u in users[:20]]
-    lines.append(f"\n*Chats:* `{len(chats)}`")
-    lines += [f"• `{c}`" for c in chats[:20]]
-    await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-
 async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: Show bot statistics"""
     if not is_admin(update.effective_user.id):
         return
-    
     stats_text = f"""
 *📊 Bot Statistics*
 
 *👥 Users:* `{len(STORE.get('allowed_users', []))}`
 *💬 Chats:* `{len(STORE.get('allowed_chats', []))}`
 *🌐 Services:* `{len(DOMAINS)}`
-
-*💾 Storage:*
-Store file: `{STORE_FILE}`
-Size: `{os.path.getsize(STORE_FILE) if os.path.exists(STORE_FILE) else 0}` bytes
+*📁 Store Size:* `{os.path.getsize(STORE_FILE) if os.path.exists(STORE_FILE) else 0}` bytes
 
 *⚙️ Config:*
 Admin ID: `{ADMIN_ID}`
@@ -787,16 +955,11 @@ _System operational ✅_
 """
     await update.message.reply_text(stats_text, parse_mode="MarkdownV2")
 
-# Generic bypass command template
+# Generic bypass command
 async def generic_bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE, service_name: str, bypass_func):
-    # Check channel membership
     if not await is_user_in_channel(update, context):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)]])
-        await update.message.reply_text(
-            f"❌ Please join our channel first\\!\n\nUse /start to verify membership\\.",
-            parse_mode="MarkdownV2",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text(f"❌ Please join our channel first\\!\n\nUse /start to verify membership\\.", parse_mode="MarkdownV2", reply_markup=keyboard)
         return
     
     if not context.args:
@@ -817,7 +980,7 @@ async def generic_bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     await status_msg.edit_text(msg, parse_mode="MarkdownV2", reply_markup=keyboard)
 
-# Individual command handlers
+# Command handlers
 async def cmd_hubdrive(u, c): await generic_bypass_cmd(u, c, "HubDrive", hubdrive_bypass)
 async def cmd_hubcloud(u, c): await generic_bypass_cmd(u, c, "HubCloud", hubcloud_bypass)
 async def cmd_hubcdn(u, c): await generic_bypass_cmd(u, c, "HubCDN", hubcdn_bypass)
@@ -837,14 +1000,9 @@ async def cmd_wlinkfast(u, c): await generic_bypass_cmd(u, c, "WLinkFast", wlink
 
 # Auto-detect bypass
 async def bypass_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check channel membership
     if not await is_user_in_channel(update, context):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)]])
-        await update.message.reply_text(
-            f"❌ Please join our channel first\\!\n\nUse /start to verify membership\\.",
-            parse_mode="MarkdownV2",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text(f"❌ Please join our channel first\\!\n\nUse /start to verify membership\\.", parse_mode="MarkdownV2", reply_markup=keyboard)
         return
     
     if not context.args:
@@ -855,7 +1013,7 @@ async def bypass_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     low = url.lower()
     status_msg = await update.message.reply_text("🔍 Detecting service\\.\\.\\.", parse_mode="MarkdownV2")
     
-    # Auto-detect service
+    # Auto-detect
     if "hubdrive" in low:
         res = await run_blocking(hubdrive_bypass, url)
         service = "HubDrive"
@@ -905,7 +1063,6 @@ async def bypass_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = await run_blocking(wlinkfast_bypass, url)
         service = "WLinkFast"
     else:
-        # Fallback tries
         res = await run_blocking(hubdrive_bypass, url)
         service = "Auto"
         if not res.get("links"):
@@ -927,6 +1084,8 @@ async def bypass_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- Main ----------------
 def main():
+    print("🚀 Initializing bot...")
+    
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     # Public commands
@@ -938,14 +1097,8 @@ def main():
     # Callback handlers
     app.add_handler(CallbackQueryHandler(verify_membership_callback, pattern="^verify_membership$"))
     
-    # Admin commands (hidden)
+    # Admin commands
     app.add_handler(CommandHandler("setdomain", setdomain_handler))
-    app.add_handler(CommandHandler("getdomains", getdomains_handler))
-    app.add_handler(CommandHandler("grant", grant_handler))
-    app.add_handler(CommandHandler("revoke", revoke_handler))
-    app.add_handler(CommandHandler("allowchat", allowchat_handler))
-    app.add_handler(CommandHandler("denychat", denychat_handler))
-    app.add_handler(CommandHandler("listallowed", listallowed_handler))
     app.add_handler(CommandHandler("stats", stats_handler))
     
     # Bypass commands
@@ -967,14 +1120,13 @@ def main():
     app.add_handler(CommandHandler("fastlinks", cmd_fastlinks))
     app.add_handler(CommandHandler("wlinkfast", cmd_wlinkfast))
     
-    print("🤖 Professional Bypass Bot Started!")
+    print("✅ Bot initialized successfully!")
     print(f"👤 Admin: {ADMIN_ID}")
-    print(f"📢 Required Channel: {REQUIRED_CHANNEL}")
-    print("📋 Services: 20+ supported")
-    print("⚡ Ready for requests...")
-    print(f"🕐 Started at: 2025-01-04 14:31:19 UTC")
+    print(f"📢 Channel: {REQUIRED_CHANNEL}")
+    print("🌐 Services: 20+ supported")
+    print("⚡ Starting polling...")
     
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
