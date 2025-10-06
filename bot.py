@@ -243,38 +243,89 @@ def hubcloud_bypass(url: str):
         base_url = "https://hubcloud.one"
         new_url = url.replace(get_base_url(url), base_url)
         headers = {"User-Agent": USER_AGENT}
-        doc = requests.get(new_url, headers=headers, timeout=20).text
-        soup = BeautifulSoup(doc, 'html.parser')
-        script_tag = soup.find('script', string=re.compile(r'var\s+url'))
+        
+        # Get initial page
+        r = requests.get(new_url, headers=headers, timeout=20)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # Extract the redirect link
         link = ""
+        # Try to find it in script tags first
+        script_tag = soup.find('script', string=re.compile(r'var\s+url'))
         if script_tag:
             match = re.search(r"var url = '([^']*)'", script_tag.string)
             if match:
                 link = match.group(1)
+        
+        # If not found in script, try the center link
         if not link:
-            center_link = soup.select_one("div.vd > center > a")
-            if center_link:
-                link = center_link.get('href', '')
+            link_elem = soup.select_one("div.vd > center > a")
+            link = link_elem.get('href', '') if link_elem else ""
+        
+        # Make sure link is absolute
         if not link.startswith("https://"):
             link = base_url + link
+        
+        if not link:
+            return {"file_name": "", "file_size": "", "links": []}
+        
+        # Get the document from the new link
         document = requests.get(link, headers=headers, timeout=20).text
         soup2 = BeautifulSoup(document, 'html.parser')
+        
+        # Extract file info
         header = soup2.select_one("div.card-header")
         file_name = header.get_text(strip=True) if header else ""
         size_elem = soup2.select_one("i#size")
         file_size = size_elem.get_text(strip=True) if size_elem else ""
+        
         links = []
+        # Process all links in the card body
         card_body = soup2.select_one("div.card-body")
         if card_body:
             for anchor in card_body.select("h2 a.btn"):
                 href = anchor.get('href', '')
                 text = anchor.get_text(strip=True)
-                if "Download [FSL Server]" in text:
+                
+                if not href:
+                    continue
+                
+                # Process link based on text
+                if "[FSL Server]" in text:
                     links.append({"type": "FSL Server", "url": href})
+                elif "[FSLv2 Server]" in text:
+                    links.append({"type": "FSLv2 Server", "url": href})
+                elif "[Mega Server]" in text:
+                    links.append({"type": "Mega Server", "url": href})
                 elif "Download File" in text or "Download [Server : 1]" in text:
                     links.append({"type": "Direct Download", "url": href})
+                elif "BuzzServer" in text:
+                    try:
+                        buzz_response = requests.get(
+                            f"{href}/download",
+                            headers={"Referer": href, "User-Agent": USER_AGENT},
+                            allow_redirects=False,
+                            timeout=15
+                        )
+                        if buzz_response.status_code == 200 and 'hx-redirect' in buzz_response.headers:
+                            dlink = buzz_response.headers['hx-redirect']
+                            if dlink:
+                                links.append({"type": "BuzzServer", "url": get_base_url(href) + dlink})
+                    except:
+                        pass
                 elif "pixeldra" in href:
                     links.append({"type": "Pixeldrain", "url": href})
+                elif "Download [Server : 10Gbps]" in text:
+                    try:
+                        server_response = requests.get(href, headers=headers, allow_redirects=False, timeout=15)
+                        if server_response.status_code == 302 and 'location' in server_response.headers:
+                            dlink = server_response.headers['location']
+                            if "link=" in dlink:
+                                links.append({"type": "Direct Download", "url": dlink.split("link=")[1]})
+                    except:
+                        pass
+        
         return {"file_name": file_name, "file_size": file_size, "links": links}
     except Exception as e:
         return {"file_name": "", "file_size": "", "links": [], "error": str(e)}
